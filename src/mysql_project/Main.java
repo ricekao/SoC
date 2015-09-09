@@ -29,7 +29,7 @@ public class Main {
     static Connection conn = null;
     static String host = "localhost";
     static String port = "3306";
-    static String db = "rice_brightkite";	//"rice_schema"; // "rice_brightkite"
+    static String db = "rice_brightkite";	//Your database name here: "rice_schema" or "rice_brightkite"
     static String user = "root";
     static String pass = "";
 
@@ -48,10 +48,11 @@ public class Main {
             // Do something with the Connection
             runNonQuery("SET foreign_key_checks = 0");  // Ignore foreign key check
 
+            
             // Calculate co-occurrence for gowalla top500
-            String tableName = "bright_top7000",	//"bright_top500",	//"gowalla_top7000", //_dist",
-                	checkinTableName = "bright_checkin_top7000",	//"gowalla_checkin_top7000",
-                	friendshipTableName = "bright_friends_top7000";	//"gowalla_friends_top7000",
+            String tableName = "gowalla_top500",	// output tableNmae of "runCoOccurrence"
+                	checkinTableName = "bright_checkin_top7000",	// input tableName of "runCoOccurrence": check-in table
+                	friendshipTableName = "bright_friends_top7000";	// input tableName of "runAggregatedCoOccurrences": friendship table
             
 	        runCoOccurrence(tableName, checkinTableName);
 	        runDiversity(tableName);
@@ -260,7 +261,7 @@ public class Main {
             	max_total_freq = Integer.valueOf(rs.getObject(1).toString());
             }
             
-            // Create tablet %s_diversity
+            // Create table %s_diversity
             txt = "CREATE TABLE IF NOT EXISTS `%s_diversity` ( "+
           		  "`user_1` int(11) NOT NULL, "+
           		  "`user_2` int(11) NOT NULL, "+
