@@ -51,8 +51,8 @@ public class Main {
             
             // Calculate co-occurrence for gowalla top500
             String tableName = "gowalla_top500",	// output tableNmae of "runCoOccurrence"
-                	checkinTableName = "bright_checkin_top7000",	// input tableName of "runCoOccurrence": check-in table
-                	friendshipTableName = "bright_friends_top7000";	// input tableName of "runAggregatedCoOccurrences": friendship table
+                	checkinTableName = "gowalla_checkin_top500",	// input tableName of "runCoOccurrence": check-in table
+                	friendshipTableName = "gowalla_friends_top500";	// input tableName of "runAggregatedCoOccurrences": friendship table
             
 	        runCoOccurrence(tableName, checkinTableName);
 	        runDiversity(tableName);
@@ -137,7 +137,7 @@ public class Main {
   			runNonQuery(query);
   			
   			
-    		// Create table temp1
+    		// Create table temp1: Calculate co_occurrence frequency at a certain venue of user_1 and user_2
     		query = String.format("create table %s_temp1 as( select user_1, user_2, venue_id, sum(frequency) as co_occur_freq from %s group by user_1, user_2, venue_id );", tableName, tableName);
 			runNonQuery(query);
 
@@ -147,7 +147,7 @@ public class Main {
   			runNonQuery(query);
 
 
-    		// Create table temp2
+    		// Create table temp2: Calculate total co_occurrence frequency of user_1 and user_2
 			query = String.format("create table %s_temp2 as( select user_1, user_2, venue_id, co_occur_freq, sum(co_occur_freq) as total_freq from %s_temp1 group by user_1, user_2 );", tableName, tableName);
 			runNonQuery(query);
 
@@ -157,7 +157,7 @@ public class Main {
   			runNonQuery(query);
 
 
-			// Create table temp 3
+			// Create table temp 3: Calculate "px" in Formula 1. (where px = distribution)
 			txt = "CREATE TABLE IF NOT EXISTS `%s_temp3` ( "+
           		  "`user_1` int(11) NOT NULL, "+
           		  "`user_2` int(11) NOT NULL, "+
@@ -168,7 +168,7 @@ public class Main {
           		") ENGINE=InnoDB DEFAULT CHARSET=latin1; ";
 			query = String.format(txt, tableName);
 			runNonQuery(query);
-
+			
 			txt = "insert into %s_temp3( " + 
 					"select temp1.user_1, temp1.user_2, temp1.venue_id, temp1.co_occur_freq, temp2.total_freq, (temp1.co_occur_freq / temp2.total_freq) as distribution " + 
 				    "from %s_temp1 as temp1 join %s_temp2 as temp2 on temp1.user_1 = temp2.user_1 and temp1.user_2 = temp2.user_2 "+
@@ -180,7 +180,7 @@ public class Main {
 			query = String.format("ALTER TABLE %s_temp3 ADD INDEX (distribution) ;", tableName);
   			runNonQuery(query);
   			
-  			// Create table temp4
+  			// Create table temp4: Calculate "ln_distribution" used in Shannon entropy
 			txt = "CREATE TABLE IF NOT EXISTS `%s_temp4` ( "+
           		  "`user_1` int(11) NOT NULL, "+
           		  "`user_2` int(11) NOT NULL, "+
@@ -204,7 +204,7 @@ public class Main {
   			runNonQuery(query);
 			
 
-			// Create table temp 5
+			// Create table temp 5: Calculate "inverse Simpson index" (Formula 1.)  & "Shannon entropy"
   			txt = "CREATE TABLE IF NOT EXISTS `%s_temp5` ( "+
             		  "`user_1` int(11) NOT NULL, "+
             		  "`user_2` int(11) NOT NULL, "+
@@ -219,7 +219,6 @@ public class Main {
   			query = String.format(txt, tableName);
   			runNonQuery(query);
   			
-			// Insert data to table temp5
 			txt = "insert into %s_temp5( "+
 				"select user_1, user_2, venue_id, co_occur_freq, total_freq, distribution, ln_distribution, -(sum(distribution * ln_distribution)), (1/(sum(power(distribution,2)))) "+
 			    "from %s_temp4 "+
@@ -239,7 +238,7 @@ public class Main {
 			query = String.format("update %s_temp5 set shannon_entropy = 0.001 where shannon_entropy = 0;", tableName);
 			runNonQuery(query);
 			
-			
+			// Calculate "max.Num_of_co_occur_venue" in Formula 2.
 			txt = "select max(venue_id_counter) from ( "+
 				"select user_1, user_2, count(distinct(venue_id)) venue_id_counter "+ 
 				"from %s_temp1 "+
@@ -253,7 +252,8 @@ public class Main {
             while(rs.next()) {
             	diversity = Integer.valueOf(rs.getObject(1).toString());
             }
-
+            
+            //	Calculate "max.frequency" in Formula 2.
             query = String.format("select max(total_freq) from %s_temp5;", tableName);
             rs = runQuery(query);
             int max_total_freq = 0;
@@ -274,7 +274,7 @@ public class Main {
 			query = String.format(txt, tableName);
 			runNonQuery(query);
 			
-			// insert data to temp5
+			// Calculate the "normalized_frequency * normalized_diversity" in Formula 2.
             txt = "insert into %s_diversity( "+
         		"select user_1, user_2, total_freq, shannon_entropy, inverse_simpson_index, (( total_freq / %d ) * ( shannon_entropy / %d )), "+
         			"(( total_freq / %d ) * ( inverse_simpson_index / %d)) "+
@@ -294,12 +294,6 @@ public class Main {
 			query = String.format("ALTER TABLE %s_diversity ADD INDEX (freq_inverse_simpson) ;", tableName);
 			runNonQuery(query);
 			
-			
-
-//			query = String.format("", tableName, tableName);
-//			runNonQuery(query);
-
-			
 		} catch (SQLException e) {
 			log("Error query is " + query);
 			log("Error while running runDiversity " + e.getMessage());
@@ -318,6 +312,11 @@ public class Main {
   			runNonQuery(query);
   			
     		// Create table temporal_temp1
+  			// Calculate friendship duration (duration_hour) in Formula 6. and Formula 7.
+  			// Calculate frequency (density) in Formula 6.
+  			// Calculate standard_deviation in Formula 6.
+  			
+  			// Note: Here, "density" means "frequency" which is different from the density in paper.
   			txt = "CREATE TABLE IF NOT EXISTS `%s_temporal_temp1` ( "+
             		  "`user_1` int(11) NOT NULL, "+
             		  "`user_2` int(11) NOT NULL, "+
@@ -332,7 +331,6 @@ public class Main {
   			query = String.format(txt, tableName);
   			runNonQuery(query);
 
-  			
   			txt = "insert into %s_temporal_temp1( "+
   					"select user_1, user_2, venue_id, timediff, frequency, avg_checkin_time, "+
   							"((max(avg_checkin_time) - min(avg_checkin_time)))/3600 as duration_hour, "+
@@ -355,7 +353,7 @@ public class Main {
 
   			
   			
-  			
+  			// Calculate max(friendship duration) among all users in Formula 8.
 			txt = "select max(duration_hour) from %s_temporal_temp1;";
 			query = String.format(txt, tableName);
 
@@ -381,7 +379,7 @@ public class Main {
   			runNonQuery(query);
 
   			
-            // Insert into temporal
+            // Insert into temporal: Calculate "stability" and "duration" in Formula 6. and Formula 8. respectively. 
   			txt = "insert into %s_temporal( "+
 	    		"select user_1, user_2, avg_checkin_time, duration_hour, density, std_deviation_hour, "+ 
 	    			"exp(-((duration_hour/density) + std_deviation_hour)), "+
@@ -390,7 +388,7 @@ public class Main {
   			query = String.format(txt, tableName, maxDurationHour, tableName);
   			runNonQuery(query);
   			
-  			// Update
+  			// Update: if a user pair only has one co-occurrence (density=1), we set stability = 0 
   			query = String.format("update %s_temporal set stability = 0  where density = 1;", tableName);
   			runNonQuery(query);
 
@@ -465,6 +463,7 @@ public class Main {
 			query = String.format(txt, tableName);
 			runNonQuery(query);
   			
+			// Calculate "visiting ratio" (weighted_popularity) in Formula 4.
   			txt = "insert into %s_aggrgate_location_popularity_temp1( "+
   					"select  co_occur.user_1, co_occur.user_2, co_occur.venue_id, co_occur_freq, "+
   							"loc_pop.inverse_popularity, "+
@@ -475,7 +474,7 @@ public class Main {
   			query = String.format(txt, tableName, tableName, tableName);
 			runNonQuery(query);
 
-    		// Add index to %s_temporal
+    		// Add index to %s_aggrgate_location_popularity_temp1
 			query = String.format("ALTER TABLE %s_aggrgate_location_popularity_temp1 ADD INDEX (user_1) ;", tableName);
   			runNonQuery(query);
   			query = String.format("ALTER TABLE %s_aggrgate_location_popularity_temp1 ADD INDEX (user_2) ;", tableName);
@@ -484,7 +483,8 @@ public class Main {
   			runNonQuery(query);
   			query = String.format("ALTER TABLE %s_aggrgate_location_popularity_temp1 ADD INDEX (weighted_popularity) ;", tableName);
   			runNonQuery(query);
-//  			
+ 			
+  			// Calculate location popularity in Formula 5. (by the formula of Shannon entropy)  
   			txt = "CREATE TABLE IF NOT EXISTS `%s_aggrgate_location_popularity_temp2` ( "+
   				  "`user_1` int(11) NOT NULL, "+
           		  "`user_2` int(11) NOT NULL, "+
@@ -495,7 +495,6 @@ public class Main {
           		") ENGINE=InnoDB DEFAULT CHARSET=latin1; ";
 			query = String.format(txt, tableName);
 			runNonQuery(query);
-			
 			
 			txt = "insert into %s_aggrgate_location_popularity_temp2 ( "+
 					"select user_1, user_2, venue_id, co_occur_freq, weighted_popularity, -(sum(weighted_popularity * log(weighted_popularity))) "+
@@ -516,7 +515,8 @@ public class Main {
   			query = String.format("ALTER TABLE %s_aggrgate_location_popularity_temp2 ADD INDEX (location_entropy) ;", tableName);
   			runNonQuery(query);
   			
- //
+  			// Aggregate location entropy with co-occurrence table to calculate "weighted_location_entropy"
+  			// "weighted_location_entropy" = co_occur_frquency at the venue * location_entropy of the venue
   			txt = "CREATE TABLE IF NOT EXISTS `%s_aggrgate_location_popularity_temp3` ( "+
   				  "`user_1` int(11) NOT NULL, "+
           		  "`user_2` int(11) NOT NULL, "+
@@ -528,15 +528,13 @@ public class Main {
 			query = String.format(txt, tableName);
 			runNonQuery(query);
 			
-			
 			txt = "insert into %s_aggrgate_location_popularity_temp3 ( "+
 					"select user.user_1, user.user_2, user.venue_id, user.co_occur_freq, location.location_entropy, "+ //sum(weighted_popularity) "+
 					"user.co_occur_freq * location.location_entropy "+
 					"from %s_aggrgate_location_popularity_temp2 location "+	//"from %s_aggrgate_location_popularity_temp1 "+
 					"join %s_aggrgate_location_popularity_temp1 user "+
 					"on user.venue_id = location.venue_id); ";
-			
-			
+				
 			query = String.format(txt, tableName, tableName, tableName);
 			runNonQuery(query);
 
@@ -548,9 +546,8 @@ public class Main {
 			runNonQuery(query);
 			query = String.format("ALTER TABLE %s_aggrgate_location_popularity_temp3 ADD INDEX (weighted_location_entropy) ;", tableName);
 			runNonQuery(query);
-//
-  			
-  			
+
+			// Sum the "weighted_location_entropy" of all venues of a user pair
   			txt = "CREATE TABLE IF NOT EXISTS `%s_aggrgate_location_popularity_temp4` ( "+
     				  "`user_1` int(11) NOT NULL, "+
             		  "`user_2` int(11) NOT NULL, "+
@@ -575,7 +572,7 @@ public class Main {
   			query = String.format("ALTER TABLE %s_aggrgate_location_popularity_temp4 ADD INDEX (sum_weighted_location_entropy) ;", tableName);
   			runNonQuery(query);
   			
-
+  			// Normalize "sum_weighted_location_entropy" with their co-occurrence frequency
   			txt = "CREATE TABLE IF NOT EXISTS `%s_aggrgate_location_popularity` ( "+
   				  "`user_1` int(11) NOT NULL, "+
           		  "`user_2` int(11) NOT NULL, "+
@@ -606,6 +603,8 @@ public class Main {
 		}
     }
     
+    
+    // Aggregate all features in diversity, popularity and temporal
     private static void runAggregatedCoOccurrences(String tableName, String friendshipTable) {
     	String query = "", txt = "";
     	ResultSet rs;
@@ -731,7 +730,7 @@ public class Main {
     		query = String.format(txt, tableName, friendshipTable, friendshipTable, tableName, friendshipTable, tableName, tableName);
 			runNonQuery(query);
 			
-			
+			// we remove those user pairs who only have "co-occurrence frequency = 1"
 			txt = "CREATE TABLE IF NOT EXISTS `%s_co_occurrences_with_friendship_cleaned` like %s_co_occurrences_with_friendship";
 			query = String.format(txt, tableName, tableName);
   			runNonQuery(query);
@@ -759,7 +758,9 @@ public class Main {
     		query = String.format("DROP TABLE IF EXISTS %s;", tableName);
   			runNonQuery(query);
 
-    		// Create table %s //gowalla_co_occurrences_top1000
+    		// Create table %s: Calculate co-occurrence of all check-in data
+  			// "timediff" = time difference between "timestamp_u1" and "timestamp_u2"
+  			// "avg_checkin_time" = average of "timestamp_u1" and "timestamp_u2". We use "avg_checkin_time" as the timestamp of a co-occurrence event
   			txt = "CREATE TABLE IF NOT EXISTS `%s` ( "+
   					"`user_1` int(11) NOT NULL, "+
 	  		  		  "`user_2` int(11) NOT NULL, "+
@@ -773,7 +774,7 @@ public class Main {
   			query = String.format(txt, tableName);
   			runNonQuery(query);
 
-  			
+  			// Co-occurrence: same "venue_id", timestamp difference < 1 hour
   			txt = "insert into %s( "+
   					"select target.user_id, similar.user_id, target.venue_id,  "+
   					"ABS(target.timestamp - similar.timestamp),  "+
